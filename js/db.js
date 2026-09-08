@@ -19,7 +19,9 @@ window.DB = {
         BATCHES: 'pfm_batches',
         FLOCKS: 'pfm_flocks',
         POULTRY_DAILY: 'pfm_poultry_daily',
-        POULTRY_EXPENSES: 'pfm_poultry_expenses'
+        POULTRY_EXPENSES: 'pfm_poultry_expenses',
+        DELETED: 'pfm_deleted_records',
+        LAST_SYNC: 'pfm_last_sync_timestamp'
     },
 
     init() {
@@ -273,14 +275,15 @@ window.DB = {
         const items = this.getAll(collection);
         const currentUser = this.getCurrentUser();
         
+        const now = new Date().toISOString();
         // Generate automatic fields
         const newRecord = {
             ...record,
             id: this._generateId(collection),
-            created_at: new Date().toISOString(),
-            created_by: currentUser ? currentUser.name : 'System',
-            updated_at: '',
-            updated_by: ''
+            created_at: record.created_at || now,
+            created_by: currentUser ? currentUser.name : (record.created_by || 'System'),
+            updated_at: now,
+            updated_by: currentUser ? currentUser.name : 'System'
         };
 
         items.push(newRecord);
@@ -319,6 +322,20 @@ window.DB = {
         if (filtered.length === items.length) return false;
 
         this._saveRaw(this.KEYS[collection.toUpperCase()], filtered);
+
+        // Record deletion tombstone for synchronization
+        const deletedRecords = this._getRaw(this.KEYS.DELETED);
+        deletedRecords.push({
+            id: id,
+            collection: collection.toLowerCase(),
+            deleted_at: new Date().toISOString()
+        });
+        // Keep tombstone list bounded to last 200 deletions
+        if (deletedRecords.length > 200) {
+            deletedRecords.splice(0, deletedRecords.length - 200);
+        }
+        this._saveRaw(this.KEYS.DELETED, deletedRecords);
+
         return true;
     },
 
@@ -412,6 +429,136 @@ window.DB = {
         linkElement.setAttribute('href', dataUri);
         linkElement.setAttribute('download', exportFileDefaultName);
         linkElement.click();
+    },
+
+    // --- Offline P2P QR Delta Sync API ---
+    getExportDelta(sinceTimestamp = null) {
+        const syncCollections = [
+            'pigs', 'batches', 'flocks', 'poultry_daily', 'poultry_expenses',
+            'feed_logs', 'medicine_logs', 'weight_logs', 'expenses', 'income',
+            'housing', 'breeding', 'users'
+        ];
+
+        const payload = {
+            v: 1,
+            export_date: new Date().toISOString(),
+            since: sinceTimestamp,
+            data: {},
+            deleted: []
+        };
+
+        syncCollections.forEach(col => {
+            const items = this.getAll(col);
+            if (sinceTimestamp) {
+                // Filter items created or updated after sinceTimestamp
+                payload.data[col] = items.filter(item => {
+                    const t = item.updated_at || item.created_at;
+                    return t && t > sinceTimestamp;
+                });
+            } else {
+                payload.data[col] = items;
+            }
+        });
+
+        // Add deleted tombstones
+        const tombstones = this._getRaw(this.KEYS.DELETED);
+        if (sinceTimestamp) {
+            payload.deleted = tombstones.filter(d => d.deleted_at > sinceTimestamp);
+        } else {
+            payload.deleted = tombstones;
+        }
+
+        return payload;
+    },
+
+    mergeDelta(incomingPayload) {
+        if (!incomingPayload || !incomingPayload.data) {
+            throw new Error("Invalid sync payload: missing data field.");
+        }
+
+        const stats = {
+            added: 0,
+            updated: 0,
+            deleted: 0,
+            unchanged: 0
+        };
+
+        const incomingData = incomingPayload.data;
+        const incomingDeleted = incomingPayload.deleted || [];
+
+        // 1. Process and merge incoming deleted tombstones
+        const localDeleted = this._getRaw(this.KEYS.DELETED);
+        incomingDeleted.forEach(delItem => {
+            if (!localDeleted.some(d => d.id === delItem.id)) {
+                localDeleted.push(delItem);
+            }
+        });
+        if (localDeleted.length > 200) {
+            localDeleted.splice(0, localDeleted.length - 200);
+        }
+        this._saveRaw(this.KEYS.DELETED, localDeleted);
+
+        const deletionMap = new Map();
+        localDeleted.forEach(d => deletionMap.set(d.id, d.deleted_at));
+
+        // 2. Process collections using Last-Write-Wins (LWW)
+        Object.keys(incomingData).forEach(col => {
+            const colKey = this.KEYS[col.toUpperCase()];
+            if (!colKey) return;
+
+            const localItems = this._getRaw(colKey);
+            const incomingItems = incomingData[col] || [];
+
+            incomingItems.forEach(incomingItem => {
+                if (!incomingItem || !incomingItem.id) return;
+
+                // Check if this item has been deleted
+                const deletedAt = deletionMap.get(incomingItem.id);
+                const incomingTimestamp = incomingItem.updated_at || incomingItem.created_at || '';
+                
+                if (deletedAt && deletedAt >= incomingTimestamp) {
+                    // Item was deleted locally or deleted earlier than incoming change
+                    return;
+                }
+
+                const localIndex = localItems.findIndex(item => item.id === incomingItem.id);
+
+                if (localIndex === -1) {
+                    // Item does not exist locally -> add it
+                    localItems.push(incomingItem);
+                    stats.added++;
+                } else {
+                    // Item exists -> compare timestamps (Last-Write-Wins)
+                    const localTimestamp = localItems[localIndex].updated_at || localItems[localIndex].created_at || '';
+                    
+                    if (incomingTimestamp > localTimestamp) {
+                        localItems[localIndex] = incomingItem;
+                        stats.updated++;
+                    } else {
+                        stats.unchanged++;
+                    }
+                }
+            });
+
+            // Clean any items in localItems that match deletions
+            const filteredLocal = localItems.filter(item => {
+                const delTime = deletionMap.get(item.id);
+                const itemTime = item.updated_at || item.created_at || '';
+                if (delTime && delTime >= itemTime) {
+                    stats.deleted++;
+                    return false;
+                }
+                return true;
+            });
+
+            this._saveRaw(colKey, filteredLocal);
+        });
+
+        // 3. Update last sync timestamp
+        const syncTimestamp = incomingPayload.export_date || new Date().toISOString();
+        localStorage.setItem(this.KEYS.LAST_SYNC, syncTimestamp);
+
+        return stats;
     },
 
     // --- Dashboard Aggregations ---

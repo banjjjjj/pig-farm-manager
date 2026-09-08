@@ -16,7 +16,8 @@ const PERMISSIONS = {
         owners: ['manage'],
         import_data: ['create'],
         batches: ['create', 'read', 'update', 'delete'],
-        poultry: ['create', 'read', 'update', 'delete']
+        poultry: ['create', 'read', 'update', 'delete'],
+        sync: ['read', 'create']
     },
     Manager: {
         pigs: ['create', 'read', 'update'],
@@ -29,7 +30,8 @@ const PERMISSIONS = {
         breeding: ['create', 'read', 'update'],
         reports: ['read'],
         batches: ['create', 'read', 'update'],
-        poultry: ['create', 'read', 'update']
+        poultry: ['create', 'read', 'update'],
+        sync: ['read', 'create']
     }
 };
 
@@ -104,7 +106,7 @@ window.App = {
         
         // Load page based on URL hash or default to dashboard
         const hash = window.location.hash.replace('#', '');
-        const defaultPage = ['dashboard', 'pigs', 'batches', 'poultry', 'feeding', 'medicine', 'weight', 'expenses', 'income', 'housing', 'breeding', 'reports', 'users', 'settings'].includes(hash) ? hash : 'dashboard';
+        const defaultPage = ['dashboard', 'pigs', 'batches', 'poultry', 'feeding', 'medicine', 'weight', 'expenses', 'income', 'housing', 'breeding', 'reports', 'sync', 'users', 'settings'].includes(hash) ? hash : 'dashboard';
         
         this.navigate(defaultPage);
     },

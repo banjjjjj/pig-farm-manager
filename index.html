@@ -21,6 +21,10 @@
     <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
+    <!-- QR Code Generator & Scanner CDNs for Zero-Cloud Offline P2P Sync -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+
     <!-- Stylesheets -->
     <link rel="stylesheet" href="css/style.css">
 </head>
@@ -120,6 +124,9 @@
                 <a href="#reports" class="nav-link" data-page="reports">
                     <span class="nav-icon">📈</span> Profit Reports
                 </a>
+                <a href="#sync" class="nav-link" data-page="sync">
+                    <span class="nav-icon">📲</span> QR Device Sync
+                </a>
                 <a href="#users" class="nav-link admin-only hidden" data-page="users">
                     <span class="nav-icon">👥</span> User Access
                 </a>
@@ -158,6 +165,7 @@
 
     <!-- Application Script Chains -->
     <script src="js/db.js"></script>
+    <script src="js/qr-sync.js"></script>
     <script src="js/app.js"></script>
     <script src="js/pages.js"></script>
 </body>
