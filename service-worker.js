@@ -1,11 +1,11 @@
-const CACHE_NAME = 'pigfarm-pro-cache-v5';
+const CACHE_NAME = 'pigfarm-pro-cache-v6';
 const ASSETS = [
   './',
   './index.html',
   './css/style.css',
-  './js/db.js',
-  './js/app.js',
-  './js/pages.js',
+  './js/db.js?v=2.5',
+  './js/app.js?v=2.5',
+  './js/pages.js?v=2.5',
   './manifest.json',
   './assets/icon-192.png',
   './assets/icon-512.png'
@@ -35,7 +35,7 @@ self.addEventListener('activate', event => {
           }
         })
       );
-    })
+    }).then(() => self.clients.claim())
   );
 });
 
