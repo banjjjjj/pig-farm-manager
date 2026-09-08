@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pigfarm-pro-cache-v2';
+const CACHE_NAME = 'pigfarm-pro-cache-v3';
 const ASSETS = [
   './',
   './index.html',
