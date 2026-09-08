@@ -1,10 +1,9 @@
-const CACHE_NAME = 'pigfarm-pro-cache-v3';
+const CACHE_NAME = 'pigfarm-pro-cache-v5';
 const ASSETS = [
   './',
   './index.html',
   './css/style.css',
   './js/db.js',
-  './js/qr-sync.js',
   './js/app.js',
   './js/pages.js',
   './manifest.json',
@@ -42,7 +41,14 @@ self.addEventListener('activate', event => {
 
 // Fetch Interceptor for Offline Capabilities
 self.addEventListener('fetch', event => {
-  // Let Chart.js CDN and other third-party libraries pass-through if offline, otherwise cache
+  // Let Firebase / Firestore APIs pass through directly
+  if (event.request.method !== 'GET' || 
+      event.request.url.includes('firestore.googleapis.com') || 
+      event.request.url.includes('firebase') ||
+      event.request.url.includes('google.com')) {
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request)
       .then(cachedResponse => {

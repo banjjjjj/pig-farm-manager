@@ -2687,12 +2687,31 @@ Pages.settings = {
                     </form>
                 </div>
 
+                <!-- Cloud Real-Time Sync -->
+                <div class="card">
+                    <h3>☁️ Cloud Database Sync</h3>
+                    <p class="text-muted" style="font-size:0.9rem; margin-bottom:16px;">Synchronize and backup your data automatically across all phones and laptops via Google Firebase.</p>
+                    
+                    <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                        <div class="flex-between align-center">
+                            <span>Status:</span>
+                            <strong style="color: #10b981;">🟢 Live Cloud Connected</strong>
+                        </div>
+                        <small class="text-muted" style="display:block; margin-top:4px;">All edits automatically sync in real-time to any device using your link.</small>
+                    </div>
+
+                    <button class="btn btn-primary mb-2" id="btn-force-upload-cloud" style="width:100%;">
+                        ☁️ Upload All Local Data to Cloud
+                    </button>
+                    <small class="text-muted" style="display:block; text-align:center;">Use this once to ensure all records on this laptop are stored in Firebase.</small>
+                </div>
+
                 <!-- Backup & Restores -->
                 <div class="card">
-                    <h3>Data Maintenance</h3>
+                    <h3>Local Data Backup</h3>
                     <p class="text-muted" style="font-size:0.9rem; margin-bottom:16px;">Download client database records as flat files or reload historical snapshots.</p>
                     
-                    <button class="btn btn-secondary mb-4" id="download-backup-btn" style="width:100%;">📥 Download Database Backup</button>
+                    <button class="btn btn-secondary mb-4" id="download-backup-btn" style="width:100%;">📥 Download Database Backup (.json)</button>
                     
                     <div style="border-top:1.5px dashed var(--glass-border); padding-top:16px;">
                         <label class="form-label">Restore database from backup (.json)</label>
@@ -2716,6 +2735,23 @@ Pages.settings = {
         document.getElementById('download-backup-btn').onclick = () => DB.downloadBackup();
         document.getElementById('restore-btn').onclick = () => this.restoreBackup();
         document.getElementById('reset-database-btn').onclick = () => this.resetDatabase();
+        
+        const uploadBtn = document.getElementById('btn-force-upload-cloud');
+        if (uploadBtn) {
+            uploadBtn.onclick = async () => {
+                uploadBtn.disabled = true;
+                uploadBtn.textContent = '⏳ Uploading data to Cloud...';
+                try {
+                    const res = await DB.uploadAllToCloud();
+                    App.showToast(`✅ Successfully uploaded ${res.totalRecords} records across ${res.collections} collections to Cloud!`, 'success');
+                } catch(e) {
+                    App.showToast('Cloud upload failed: ' + e.message, 'error');
+                } finally {
+                    uploadBtn.disabled = false;
+                    uploadBtn.textContent = '☁️ Upload All Local Data to Cloud';
+                }
+            };
+        }
     },
 
     saveSettings() {
@@ -3952,382 +3988,6 @@ Pages.poultry = {
             DB.delete('poultry_expenses', id);
             App.showToast('Log deleted successfully.', 'success');
             this.loadExpensesTable();
-        }
-    }
-};
-
-// ==========================================
-// 15. QR CODE P2P DELTA SYNC PAGE
-// ==========================================
-Pages.sync = {
-    _currentMode: 'send', // 'send' or 'receive'
-    _syncScope: 'recent', // 'recent' or 'all'
-    _activePayload: null,
-
-    render() {
-        const lastSync = localStorage.getItem(DB.KEYS.LAST_SYNC);
-        const lastSyncText = lastSync ? App.formatDateTime(lastSync) : 'Never synchronized';
-
-        return `
-            <div class="page-header">
-                <div>
-                    <h1>📲 Offline QR Device Sync</h1>
-                    <p class="text-muted">Direct peer-to-peer data sync between phone and laptop using animated QR codes and camera scanning without any cloud.</p>
-                </div>
-            </div>
-
-            <!-- Sync Info Ribbon -->
-            <div class="card mb-4" style="padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; background: rgba(99, 102, 241, 0.05); border-left: 4px solid var(--accent-primary);">
-                <div>
-                    <span style="font-size: 0.9rem; color: var(--text-secondary);">Last Synchronization:</span>
-                    <strong style="margin-left: 8px; color: var(--text-primary);">${lastSyncText}</strong>
-                </div>
-                <div>
-                    <span class="badge badge-success">🔒 Zero-Cloud / 100% Offline</span>
-                </div>
-            </div>
-
-            <!-- Mode Switcher Tabs -->
-            <div class="card mb-4" style="padding: 10px; display: flex; gap: 10px;">
-                <button class="btn ${this._currentMode === 'send' ? 'btn-primary' : 'btn-secondary'}" id="btn-mode-send" style="flex: 1; padding: 12px; font-weight: 600;">
-                    📤 Send Data (Show QR Code)
-                </button>
-                <button class="btn ${this._currentMode === 'receive' ? 'btn-primary' : 'btn-secondary'}" id="btn-mode-receive" style="flex: 1; padding: 12px; font-weight: 600;">
-                    📥 Receive Data (Scan with Camera)
-                </button>
-            </div>
-
-            <!-- Content Area -->
-            <div id="sync-mode-container">
-                ${this._currentMode === 'send' ? this.renderSendView() : this.renderReceiveView()}
-            </div>
-        `;
-    },
-
-    init() {
-        // Tab switching
-        const btnSend = document.getElementById('btn-mode-send');
-        const btnReceive = document.getElementById('btn-mode-receive');
-
-        if (btnSend) {
-            btnSend.onclick = () => {
-                if (window.QRSync) window.QRSync.stopScanner();
-                this._currentMode = 'send';
-                this.refreshView();
-            };
-        }
-
-        if (btnReceive) {
-            btnReceive.onclick = () => {
-                if (window.QRSync) window.QRSync.stopQRAnimation();
-                this._currentMode = 'receive';
-                this.refreshView();
-            };
-        }
-
-        // Initialize active mode
-        if (this._currentMode === 'send') {
-            this.initSendHandlers();
-        } else {
-            this.initReceiveHandlers();
-        }
-    },
-
-    refreshView() {
-        const container = document.getElementById('main-content');
-        if (container) {
-            container.innerHTML = this.render();
-            this.init();
-        }
-    },
-
-    // -------------------------------------------------------------
-    // SEND MODE (Show QR)
-    // -------------------------------------------------------------
-    renderSendView() {
-        const lastSync = localStorage.getItem(DB.KEYS.LAST_SYNC);
-        const hasLastSync = !!lastSync;
-
-        return `
-            <div class="dashboard-grid">
-                <!-- Controls Card -->
-                <div class="card">
-                    <h3>1. Select Data to Export</h3>
-                    <p class="text-muted" style="font-size: 0.9rem; margin-bottom: 16px;">
-                        Choose whether to send only records modified recently or your complete farm history.
-                    </p>
-
-                    <div class="form-group">
-                        <label class="form-label">Synchronization Scope</label>
-                        <select id="sync-scope-select" class="form-control">
-                            <option value="recent" ${this._syncScope === 'recent' && hasLastSync ? 'selected' : ''} ${!hasLastSync ? 'disabled' : ''}>
-                                Changes since last sync (${hasLastSync ? App.formatDate(lastSync) : 'No previous sync'})
-                            </option>
-                            <option value="all" ${this._syncScope === 'all' || !hasLastSync ? 'selected' : ''}>
-                                Entire Farm Database (Full Sync)
-                            </option>
-                        </select>
-                    </div>
-
-                    <button class="btn btn-primary mt-2" id="btn-generate-qr" style="width: 100%; padding: 12px; font-weight: 600;">
-                        🔄 Generate Sync QR Code
-                    </button>
-
-                    <div id="sync-payload-summary" class="mt-4 hidden" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--glass-border); border-radius: 8px; padding: 14px;">
-                        <h4 style="font-size: 0.95rem; margin-bottom: 8px; color: var(--accent-secondary);">Export Summary</h4>
-                        <div id="payload-counts" style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6;"></div>
-                        <button class="btn btn-secondary btn-sm mt-3" id="btn-copy-sync-text" style="width: 100%;">
-                            📋 Copy Raw Payload to Clipboard (Fallback)
-                        </button>
-                    </div>
-                </div>
-
-                <!-- QR Display Card -->
-                <div class="card" style="text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 380px;">
-                    <div id="qr-placeholder-text">
-                        <div style="font-size: 3.5rem; margin-bottom: 12px;">📱</div>
-                        <h3 style="margin-bottom: 6px;">Ready to Broadcast</h3>
-                        <p class="text-muted" style="max-width: 280px; font-size: 0.9rem;">
-                            Click "Generate Sync QR Code" to display the transmission code for Device B.
-                        </p>
-                    </div>
-
-                    <div id="sync-qr-wrapper" class="hidden" style="width: 100%; display: flex; flex-direction: column; align-items: center;">
-                        <div id="sync-qrcode" style="background: #ffffff; padding: 16px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); display: inline-block;"></div>
-                        <div id="sync-qr-progress" style="width: 100%; max-width: 300px; margin-top: 16px;"></div>
-                    </div>
-                </div>
-            </div>
-        `;
-    },
-
-    initSendHandlers() {
-        const scopeSelect = document.getElementById('sync-scope-select');
-        const btnGen = document.getElementById('btn-generate-qr');
-        const copyBtn = document.getElementById('btn-copy-sync-text');
-
-        if (scopeSelect) {
-            scopeSelect.onchange = () => {
-                this._syncScope = scopeSelect.value;
-            };
-        }
-
-        if (btnGen) {
-            btnGen.onclick = () => {
-                const lastSync = localStorage.getItem(DB.KEYS.LAST_SYNC);
-                const since = this._syncScope === 'recent' ? lastSync : null;
-
-                document.getElementById('qr-placeholder-text')?.classList.add('hidden');
-                document.getElementById('sync-qr-wrapper')?.classList.remove('hidden');
-
-                const result = window.QRSync.startExportDisplay('sync-qrcode', 'sync-qr-progress', since, 650);
-                this._activePayload = result.payload;
-
-                // Show payload stats
-                const summaryEl = document.getElementById('sync-payload-summary');
-                const countsEl = document.getElementById('payload-counts');
-                if (summaryEl && countsEl && result.payload && result.payload.data) {
-                    const data = result.payload.data;
-                    const parts = [];
-                    if (data.pigs?.length) parts.push(`🐷 ${data.pigs.length} Pigs`);
-                    if (data.batches?.length) parts.push(`📦 ${data.batches.length} Batches`);
-                    if (data.flocks?.length) parts.push(`🐔 ${data.flocks.length} Poultry Flocks`);
-                    if (data.poultry_daily?.length) parts.push(`🥚 ${data.poultry_daily.length} Daily Egg Logs`);
-                    if (data.poultry_expenses?.length) parts.push(`🌾 ${data.poultry_expenses.length} Poultry Feed/Meds`);
-                    if (data.feed_logs?.length) parts.push(`🌾 ${data.feed_logs.length} Feed Records`);
-                    if (data.medicine_logs?.length) parts.push(`💊 ${data.medicine_logs.length} Medical Logs`);
-                    if (data.weight_logs?.length) parts.push(`⚖️ ${data.weight_logs.length} Weight Logs`);
-                    if (data.expenses?.length) parts.push(`💸 ${data.expenses.length} Expenses`);
-                    if (data.income?.length) parts.push(`💰 ${data.income.length} Income Entries`);
-                    if (data.housing?.length) parts.push(`🏠 ${data.housing.length} Housing Pens`);
-                    if (data.breeding?.length) parts.push(`🐖 ${data.breeding.length} Breeding Records`);
-
-                    const delCount = result.payload.deleted?.length || 0;
-                    if (delCount > 0) parts.push(`🗑️ ${delCount} Deleted Records`);
-
-                    countsEl.innerHTML = parts.length > 0 ? parts.join('<br>') : 'No modified records found in selected scope.';
-                    summaryEl.classList.remove('hidden');
-                }
-
-                App.showToast('QR Code generated. Point Device B camera to scan.', 'info');
-            };
-        }
-
-        if (copyBtn) {
-            copyBtn.onclick = () => {
-                if (!this._activePayload) return;
-                const str = JSON.stringify(this._activePayload);
-                navigator.clipboard.writeText(str).then(() => {
-                    App.showToast('Raw sync payload copied to clipboard!', 'success');
-                }).catch(() => {
-                    App.showToast('Failed to copy. Use manual select.', 'error');
-                });
-            };
-        }
-    },
-
-    // -------------------------------------------------------------
-    // RECEIVE MODE (Camera Scanner)
-    // -------------------------------------------------------------
-    renderReceiveView() {
-        return `
-            <div class="dashboard-grid">
-                <!-- Scanner Card -->
-                <div class="card" style="text-align: center;">
-                    <h3>2. Scan QR from Device A</h3>
-                    <p class="text-muted" style="font-size: 0.9rem; margin-bottom: 16px;">
-                        Point your device camera at the QR code displayed on Device A.
-                    </p>
-
-                    <!-- Camera Viewfinder Box -->
-                    <div id="reader-container" style="position: relative; max-width: 340px; margin: 0 auto; border-radius: 12px; overflow: hidden; background: #000; border: 2px solid var(--glass-border); min-height: 280px; display: flex; align-items: center; justify-content: center;">
-                        <div id="qr-camera-reader" style="width: 100%;"></div>
-                        <div id="camera-idle-placeholder" style="padding: 30px 20px; color: var(--text-secondary);">
-                            <div style="font-size: 3.5rem; margin-bottom: 10px;">📷</div>
-                            <p style="font-size: 0.95rem;">Camera currently idle</p>
-                        </div>
-                    </div>
-
-                    <!-- Progress Bar for Multi-part QRs -->
-                    <div id="scan-chunk-progress" class="mt-3 hidden" style="max-width: 340px; margin-left: auto; margin-right: auto;">
-                        <div class="flex-between align-center mb-1">
-                            <span class="badge badge-warning" id="scan-status-text">Receiving parts...</span>
-                            <small id="scan-progress-percent" class="text-muted">0%</small>
-                        </div>
-                        <div style="background: var(--glass-border); height: 8px; border-radius: 4px; overflow: hidden;">
-                            <div id="scan-progress-bar" style="background: var(--success); width: 0%; height: 100%; transition: width 0.2s ease;"></div>
-                        </div>
-                    </div>
-
-                    <!-- Scanner Controls -->
-                    <div class="flex gap-2 justify-center mt-4">
-                        <button class="btn btn-primary" id="btn-start-camera" style="padding: 12px 24px; font-weight: 600;">
-                            📷 Start Camera Scanner
-                        </button>
-                        <button class="btn btn-secondary hidden" id="btn-stop-camera" style="padding: 12px 24px;">
-                            ⏹️ Stop Camera
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Direct Paste Fallback Card -->
-                <div class="card">
-                    <h3>Manual Paste Alternative</h3>
-                    <p class="text-muted" style="font-size: 0.9rem; margin-bottom: 16px;">
-                        If your browser or device lacks camera access, you can paste raw sync text from Device A:
-                    </p>
-
-                    <div class="form-group">
-                        <label class="form-label">Paste Sync JSON String</label>
-                        <textarea id="manual-sync-text" class="form-control" rows="8" placeholder='{"v":1,"export_date":"...","data":{...}}' style="font-family: monospace; font-size: 0.8rem;"></textarea>
-                    </div>
-
-                    <button class="btn btn-secondary" id="btn-apply-manual-sync" style="width: 100%; padding: 10px;">
-                        📥 Merge Pasted Payload
-                    </button>
-                </div>
-            </div>
-        `;
-    },
-
-    initReceiveHandlers() {
-        const btnStart = document.getElementById('btn-start-camera');
-        const btnStop = document.getElementById('btn-stop-camera');
-        const btnManual = document.getElementById('btn-apply-manual-sync');
-        const idlePlaceholder = document.getElementById('camera-idle-placeholder');
-        const progressBox = document.getElementById('scan-chunk-progress');
-        const statusText = document.getElementById('scan-status-text');
-        const progressBar = document.getElementById('scan-progress-bar');
-        const progressPercent = document.getElementById('scan-progress-percent');
-
-        const onProgress = (received, total) => {
-            if (progressBox) progressBox.classList.remove('hidden');
-            const pct = Math.round((received / total) * 100);
-            if (statusText) statusText.textContent = `Received part ${received} of ${total}`;
-            if (progressBar) progressBar.style.width = `${pct}%`;
-            if (progressPercent) progressPercent.textContent = `${pct}%`;
-        };
-
-        const onSuccess = (payload) => {
-            try {
-                if (btnStart) btnStart.classList.remove('hidden');
-                if (btnStop) btnStop.classList.add('hidden');
-                if (idlePlaceholder) idlePlaceholder.classList.remove('hidden');
-
-                const stats = window.QRSync.applySyncPayload(payload);
-
-                // Show Success Dialog
-                const summaryMsg = `
-                    <div style="font-size: 1rem; line-height: 1.6; color: var(--text-primary);">
-                        <p style="margin-bottom: 12px; color: var(--success); font-weight: 600;">
-                            ✅ Synchronization Merged Successfully!
-                        </p>
-                        <ul style="list-style-type: none; padding-left: 0; color: var(--text-secondary);">
-                            <li>➕ <strong>${stats.added}</strong> new records added</li>
-                            <li>🔄 <strong>${stats.updated}</strong> records updated (newer version applied)</li>
-                            <li>🗑️ <strong>${stats.deleted}</strong> records deleted</li>
-                            <li>⚖️ <strong>${stats.unchanged}</strong> records already up to date</li>
-                        </ul>
-                    </div>
-                `;
-
-                App.showModal(
-                    'P2P Sync Complete',
-                    summaryMsg,
-                    '<button class="btn btn-primary" onclick="App.closeModal(); Pages.sync.refreshView();">OK</button>'
-                );
-            } catch (err) {
-                App.showToast('Sync merge error: ' + err.message, 'error');
-            }
-        };
-
-        const onError = (err) => {
-            App.showToast('Camera error: ' + err.message, 'error');
-            if (btnStart) btnStart.classList.remove('hidden');
-            if (btnStop) btnStop.classList.add('hidden');
-            if (idlePlaceholder) idlePlaceholder.classList.remove('hidden');
-        };
-
-        if (btnStart) {
-            btnStart.onclick = async () => {
-                btnStart.classList.add('hidden');
-                if (btnStop) btnStop.classList.remove('hidden');
-                if (idlePlaceholder) idlePlaceholder.classList.add('hidden');
-
-                await window.QRSync.startScanner(
-                    'qr-camera-reader',
-                    onProgress,
-                    onSuccess,
-                    onError
-                );
-            };
-        }
-
-        if (btnStop) {
-            btnStop.onclick = async () => {
-                await window.QRSync.stopScanner();
-                btnStart.classList.remove('hidden');
-                btnStop.classList.add('hidden');
-                if (idlePlaceholder) idlePlaceholder.classList.remove('hidden');
-                if (progressBox) progressBox.classList.add('hidden');
-            };
-        }
-
-        if (btnManual) {
-            btnManual.onclick = () => {
-                const txt = document.getElementById('manual-sync-text')?.value.trim();
-                if (!txt) {
-                    App.showToast('Please paste a sync JSON string first.', 'warning');
-                    return;
-                }
-
-                try {
-                    const payload = JSON.parse(txt);
-                    onSuccess(payload);
-                } catch (e) {
-                    App.showToast('Invalid JSON sync string: ' + e.message, 'error');
-                }
-            };
         }
     }
 };

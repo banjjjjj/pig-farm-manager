@@ -24,6 +24,29 @@ window.DB = {
         LAST_SYNC: 'pfm_last_sync_timestamp'
     },
 
+    // Firebase Configuration for Multi-Device Real-Time Cloud Sync
+    FIREBASE_CONFIG: {
+        apiKey: "AIzaSyA1GRg977sn2jXE2CsdV5oewS0wc1zbiy8",
+        authDomain: "banj-pig-farm-management.firebaseapp.com",
+        projectId: "banj-pig-farm-management",
+        storageBucket: "banj-pig-farm-management.firebasestorage.app",
+        messagingSenderId: "671181488047",
+        appId: "1:671181488047:web:a77c1d240a6df4807eb95a",
+        measurementId: "G-30KDMG3PRD"
+    },
+
+    firestore: null,
+    isCloudReady: false,
+    _syncListeners: [],
+    _refreshTimer: null,
+
+    // Collections synchronized across devices
+    SYNC_COLLECTIONS: [
+        'users', 'pigs', 'batches', 'flocks', 'poultry_daily', 
+        'poultry_expenses', 'feed_logs', 'medicine_logs', 'weight_logs', 
+        'expenses', 'income', 'housing', 'breeding'
+    ],
+
     init() {
         // Seed default users if empty
         if (!localStorage.getItem(this.KEYS.USERS)) {
@@ -247,6 +270,215 @@ window.DB = {
             ];
             this._saveRaw(this.KEYS.POULTRY_EXPENSES, defaultPoultryExp);
         }
+
+        // 6. Initialize Real-Time Firebase Firestore Cloud Sync
+        this.initFirestore();
+    },
+
+    // --- Firebase Firestore Real-Time Synchronization Engine ---
+    initFirestore() {
+        if (typeof firebase === 'undefined') {
+            console.warn("Firebase SDK not loaded. Operating in Local Cache mode.");
+            this.updateCloudStatus('local', 'Offline Cache');
+            return;
+        }
+
+        try {
+            if (!firebase.apps || !firebase.apps.length) {
+                firebase.initializeApp(this.FIREBASE_CONFIG);
+            }
+            this.firestore = firebase.firestore();
+
+            // Enable offline persistence in Firestore
+            this.firestore.enablePersistence({ synchronizeTabs: true }).catch(err => {
+                if (err.code === 'failed-precondition') {
+                    console.warn("Firestore persistence notice: Multiple tabs open.");
+                } else if (err.code === 'unimplemented') {
+                    console.warn("Firestore persistence notice: Browser does not support indexedDB persistence.");
+                }
+            });
+
+            this.isCloudReady = true;
+            this.updateCloudStatus('connected', 'Cloud Sync: Active');
+
+            // Start listening to real-time changes on all collections
+            this.startCloudSync();
+
+        } catch (err) {
+            console.error("Firebase init error:", err);
+            this.updateCloudStatus('error', 'Cloud Offline');
+        }
+    },
+
+    startCloudSync() {
+        if (!this.firestore) return;
+
+        // Clear any old listeners
+        this._syncListeners.forEach(unsub => {
+            try { unsub(); } catch(e) {}
+        });
+        this._syncListeners = [];
+
+        // 1. Sync Settings Document
+        const settingsUnsub = this.firestore.collection('settings').doc('general').onSnapshot(doc => {
+            if (doc.exists) {
+                const cloudSettings = doc.data();
+                this._saveRaw(this.KEYS.SETTINGS, cloudSettings);
+                const brandText = document.querySelector('.brand-name');
+                if (brandText && cloudSettings.farm_name) brandText.textContent = cloudSettings.farm_name;
+            } else {
+                const localSettings = this.getSettings();
+                if (localSettings) {
+                    this.firestore.collection('settings').doc('general').set(localSettings).catch(()=>{});
+                }
+            }
+            this.updateCloudStatus('connected', 'Cloud Sync: Active');
+        }, err => {
+            console.warn("Settings sync error:", err);
+            this.updateCloudStatus('error', 'Cloud Disconnected');
+        });
+        this._syncListeners.push(settingsUnsub);
+
+        // 2. Sync All Data Collections in Real Time
+        this.SYNC_COLLECTIONS.forEach(col => {
+            const unsub = this.firestore.collection(col).onSnapshot(snapshot => {
+                if (!snapshot.empty) {
+                    const cloudDocs = [];
+                    snapshot.forEach(doc => {
+                        cloudDocs.push({ id: doc.id, ...doc.data() });
+                    });
+
+                    const key = this.KEYS[col.toUpperCase()];
+                    if (key) {
+                        this._saveRaw(key, cloudDocs);
+                    }
+
+                    this.updateCloudStatus('connected', 'Cloud Sync: Active');
+                    localStorage.setItem(this.KEYS.LAST_SYNC, new Date().toISOString());
+
+                    // Refresh active page so user sees updates live
+                    this._notifyAppChange(col);
+
+                } else {
+                    // Cloud collection is empty — automatically upload local data
+                    this._autoSeedCloudCollection(col);
+                }
+            }, err => {
+                console.warn(`Firestore sync error on ${col}:`, err);
+                this.updateCloudStatus('error', 'Cloud Disconnected');
+            });
+
+            this._syncListeners.push(unsub);
+        });
+    },
+
+    // Automatically uploads local collection data to Firestore if cloud collection is empty
+    _autoSeedCloudCollection(collection) {
+        if (!this.firestore) return;
+        const localItems = this.getAll(collection);
+        if (!localItems || localItems.length === 0) return;
+
+        console.log(`Cloud collection "${collection}" is empty. Auto-uploading ${localItems.length} local records...`);
+        const batch = this.firestore.batch();
+        localItems.forEach(item => {
+            const docRef = this.firestore.collection(collection).doc(item.id);
+            const { id: _, ...itemData } = item;
+            batch.set(docRef, itemData, { merge: true });
+        });
+        batch.commit().then(() => {
+            console.log(`Auto-upload complete for ${collection}`);
+        }).catch(err => {
+            console.warn(`Auto-upload notice for ${collection}:`, err.message);
+        });
+    },
+
+    // Notify UI to softly update view when cloud changes arrive
+    _notifyAppChange(col) {
+        if (!window.App || !window.App.currentPage) return;
+        clearTimeout(this._refreshTimer);
+        this._refreshTimer = setTimeout(() => {
+            const p = window.App.currentPage;
+            if (window.Pages && window.Pages[p]) {
+                if (typeof window.Pages[p].init === 'function') {
+                    const content = document.getElementById('main-content');
+                    if (content) {
+                        content.innerHTML = window.Pages[p].render();
+                        window.Pages[p].init();
+                    }
+                }
+            }
+        }, 300);
+    },
+
+    // Updates visual Cloud Sync indicator badge in sidebar and mobile header
+    updateCloudStatus(status, text) {
+        const badge = document.getElementById('cloud-sync-badge');
+        const dot = document.getElementById('cloud-dot');
+        const statusText = document.getElementById('cloud-status-text');
+        const icon = document.getElementById('cloud-status-icon');
+        const mobileStatus = document.getElementById('mobile-cloud-status');
+
+        let color = '#10b981'; // Green (Connected)
+        let iconEmoji = '☁️';
+
+        if (status === 'syncing') {
+            color = '#f59e0b'; // Amber
+            iconEmoji = '🔄';
+        } else if (status === 'error') {
+            color = '#ef4444'; // Red
+            iconEmoji = '⚠️';
+        } else if (status === 'local') {
+            color = '#64748b'; // Gray
+            iconEmoji = '💾';
+        }
+
+        if (dot) dot.style.background = color;
+        if (statusText) statusText.textContent = text || 'Cloud Sync: Active';
+        if (icon) icon.textContent = iconEmoji;
+        if (badge) {
+            badge.style.color = color;
+            badge.style.borderColor = `${color}40`;
+            badge.style.background = `${color}15`;
+        }
+
+        if (mobileStatus) {
+            mobileStatus.style.color = color;
+            const mobileDot = mobileStatus.querySelector('.status-dot');
+            if (mobileDot) mobileDot.style.background = color;
+        }
+    },
+
+    // Force upload all local collections to Firebase Firestore
+    async uploadAllToCloud() {
+        if (!this.firestore) {
+            throw new Error("Firebase is not connected. Make sure you are online.");
+        }
+
+        this.updateCloudStatus('syncing', 'Uploading to Cloud...');
+        let totalCount = 0;
+
+        // 1. Upload settings
+        const settings = this.getSettings();
+        await this.firestore.collection('settings').doc('general').set(settings, { merge: true });
+
+        // 2. Upload each collection
+        for (const col of this.SYNC_COLLECTIONS) {
+            const items = this.getAll(col);
+            if (items && items.length > 0) {
+                const batch = this.firestore.batch();
+                items.forEach(item => {
+                    const docRef = this.firestore.collection(col).doc(item.id);
+                    const { id: _, ...itemData } = item;
+                    batch.set(docRef, itemData, { merge: true });
+                });
+                await batch.commit();
+                totalCount += items.length;
+            }
+        }
+
+        this.updateCloudStatus('connected', 'Cloud Sync: Active');
+        localStorage.setItem(this.KEYS.LAST_SYNC, new Date().toISOString());
+        return { totalRecords: totalCount, collections: this.SYNC_COLLECTIONS.length + 1 };
     },
 
     // --- Helper persistence functions ---
@@ -276,20 +508,26 @@ window.DB = {
         const currentUser = this.getCurrentUser();
         
         const now = new Date().toISOString();
-        // Generate automatic fields
         const newRecord = {
             ...record,
-            id: this._generateId(collection),
+            id: record.id || this._generateId(collection),
             created_at: record.created_at || now,
             created_by: currentUser ? currentUser.name : (record.created_by || 'System'),
             updated_at: now,
             updated_by: currentUser ? currentUser.name : 'System'
         };
 
+        // 1. Save locally immediately (fast UI response)
         items.push(newRecord);
         this._saveRaw(this.KEYS[collection.toUpperCase()], items);
+
+        // 2. Push to Firestore Cloud
+        if (this.firestore) {
+            const { id: docId, ...docData } = newRecord;
+            this.firestore.collection(collection.toLowerCase()).doc(docId).set(docData)
+                .catch(err => console.warn(`Cloud write queued for ${collection}/${docId}:`, err.message));
+        }
         
-        // Return cloned copy of the record
         return newRecord;
     },
 
@@ -299,8 +537,6 @@ window.DB = {
         if (index === -1) return null;
 
         const currentUser = this.getCurrentUser();
-        
-        // Strip properties that shouldn't be overwritten
         const { id: _, created_at: __, created_by: ___, ...updateData } = data;
 
         const updatedRecord = {
@@ -310,9 +546,17 @@ window.DB = {
             updated_by: currentUser ? currentUser.name : 'System'
         };
 
+        // 1. Save locally immediately
         items[index] = updatedRecord;
         this._saveRaw(this.KEYS[collection.toUpperCase()], items);
         
+        // 2. Push update to Firestore Cloud
+        if (this.firestore) {
+            const { id: docId, ...docData } = updatedRecord;
+            this.firestore.collection(collection.toLowerCase()).doc(id).set(docData, { merge: true })
+                .catch(err => console.warn(`Cloud update queued for ${collection}/${id}:`, err.message));
+        }
+
         return updatedRecord;
     },
 
@@ -321,20 +565,26 @@ window.DB = {
         const filtered = items.filter(item => item.id !== id);
         if (filtered.length === items.length) return false;
 
+        // 1. Remove locally immediately
         this._saveRaw(this.KEYS[collection.toUpperCase()], filtered);
 
-        // Record deletion tombstone for synchronization
+        // 2. Record tombstone
         const deletedRecords = this._getRaw(this.KEYS.DELETED);
         deletedRecords.push({
             id: id,
             collection: collection.toLowerCase(),
             deleted_at: new Date().toISOString()
         });
-        // Keep tombstone list bounded to last 200 deletions
         if (deletedRecords.length > 200) {
             deletedRecords.splice(0, deletedRecords.length - 200);
         }
         this._saveRaw(this.KEYS.DELETED, deletedRecords);
+
+        // 3. Delete from Firestore Cloud
+        if (this.firestore) {
+            this.firestore.collection(collection.toLowerCase()).doc(id).delete()
+                .catch(err => console.warn(`Cloud delete queued for ${collection}/${id}:`, err.message));
+        }
 
         return true;
     },
