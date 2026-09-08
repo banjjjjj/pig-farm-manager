@@ -461,23 +461,38 @@ window.DB = {
     async importAll(jsonString) {
         try {
             const parsed = JSON.parse(jsonString);
-            const dataObj = parsed.data || parsed;
+            const rawData = parsed.data || parsed;
 
-            // Clear current pfm keys
+            // 1. Clear current pfm keys
             for (const key of Object.values(this.KEYS)) {
                 if (key !== this.KEYS.CURRENT_USER) {
                     localStorage.removeItem(key);
                 }
             }
 
-            // Restore from backup
-            for (const [key, value] of Object.entries(dataObj)) {
-                if (key.startsWith('pfm_') && key !== this.KEYS.CURRENT_USER) {
-                    this._saveRaw(key, value);
+            // 2. Restore all data from backup (supports both pfm_pigs and pigs keys)
+            for (const [key, value] of Object.entries(rawData)) {
+                if (!Array.isArray(value) && typeof value !== 'object') continue;
+
+                let targetKey = null;
+                if (key.startsWith('pfm_')) {
+                    targetKey = key;
+                } else if (this.KEYS[key.toUpperCase()]) {
+                    targetKey = this.KEYS[key.toUpperCase()];
+                }
+
+                if (targetKey && targetKey !== this.KEYS.CURRENT_USER) {
+                    this._saveRaw(targetKey, value);
                 }
             }
 
-            // Sync restored data to Firestore Cloud immediately
+            // Restore settings if provided
+            if (rawData.pfm_settings || rawData.settings) {
+                const s = rawData.pfm_settings || rawData.settings;
+                this._saveRaw(this.KEYS.SETTINGS, s);
+            }
+
+            // 3. Immediately overwrite Firestore Cloud with this clean restored dataset
             if (this.firestore) {
                 await this.uploadAllToCloud();
             }
@@ -487,6 +502,37 @@ window.DB = {
             console.error('Import error:', e);
             return false;
         }
+    },
+
+    // Completely wipe all records in Cloud Firestore and LocalStorage
+    async clearCloudAndLocal() {
+        this.updateCloudStatus('syncing', 'Wiping Database...');
+
+        if (this.firestore) {
+            for (const col of this.SYNC_COLLECTIONS) {
+                try {
+                    const snap = await this.firestore.collection(col).get();
+                    if (!snap.empty) {
+                        const batch = this.firestore.batch();
+                        snap.forEach(doc => batch.delete(doc.ref));
+                        await batch.commit();
+                    }
+                } catch(e) {
+                    console.warn(`Error clearing cloud collection ${col}:`, e);
+                }
+            }
+        }
+
+        // Clear local storage (preserve user session and settings)
+        for (const key of Object.values(this.KEYS)) {
+            if (key !== this.KEYS.CURRENT_USER && key !== this.KEYS.USERS && key !== this.KEYS.SETTINGS) {
+                this._saveRaw(key, []);
+            }
+        }
+
+        this.updateCloudStatus('connected', 'Cloud Sync: Active');
+        localStorage.setItem(this.KEYS.LAST_SYNC, new Date().toISOString());
+        return true;
     },
 
     downloadBackup() {

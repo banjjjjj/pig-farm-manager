@@ -2801,13 +2801,14 @@ Pages.settings = {
     },
 
     async resetDatabase() {
-        const confirm1 = await App.confirm('First Warning: Are you sure you want to completely erase the database?');
+        const confirm1 = await App.confirm('First Warning: Are you sure you want to completely erase all data from Cloud and local devices?');
         if (!confirm1) return;
 
-        const confirm2 = await App.confirm('Second Warning: This cannot be undone. Clicking confirm will delete all data.');
+        const confirm2 = await App.confirm('Second Warning: This cannot be undone. Clicking confirm will delete all farm records from Firebase and this device.');
         if (confirm2) {
-            localStorage.clear();
-            App.showToast('Database wiped. Restoring defaults...', 'info');
+            App.showToast('Wiping Cloud and local database...', 'info');
+            await DB.clearCloudAndLocal();
+            App.showToast('Database wiped clean. Reloading...', 'success');
             setTimeout(() => window.location.reload(), 1500);
         }
     }
