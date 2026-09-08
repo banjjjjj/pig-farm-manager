@@ -535,20 +535,59 @@ window.DB = {
         return true;
     },
 
-    downloadBackup() {
+    async downloadBackup() {
         const jsonStr = this.exportAll();
         const dateStr = new Date().toISOString().split('T')[0];
         const filename = `pigfarm_backup_${dateStr}.json`;
         
         const blob = new Blob([jsonStr], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+
+        // 1. Mobile Phone Support (iOS Safari PWA & Android): Uses native file share / Save to Files
+        if (navigator.canShare && typeof File !== 'undefined') {
+            try {
+                const file = new File([blob], filename, { type: 'application/json' });
+                if (navigator.canShare({ files: [file] })) {
+                    await navigator.share({
+                        files: [file],
+                        title: filename,
+                        text: 'PigFarm Pro Database Backup'
+                    });
+                    if (window.App && window.App.showToast) {
+                        window.App.showToast('Backup shared / saved successfully!', 'success');
+                    }
+                    return;
+                }
+            } catch (err) {
+                if (err.name === 'AbortError') return; // User closed the share menu
+                console.warn('Native share failed, falling back to download link:', err);
+            }
+        }
+
+        // 2. Desktop Standard Download (Chrome, Firefox, Edge, Safari Desktop)
+        try {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 1500);
+            if (window.App && window.App.showToast) {
+                window.App.showToast('Backup file downloaded to your device.', 'success');
+            }
+        } catch (err) {
+            // 3. Fallback: Copy raw JSON to clipboard
+            if (navigator.clipboard) {
+                await navigator.clipboard.writeText(jsonStr);
+                if (window.App && window.App.showToast) {
+                    window.App.showToast('Backup copied to clipboard!', 'info');
+                }
+            }
+        }
     },
 
     // --- Dashboard Aggregations ---
