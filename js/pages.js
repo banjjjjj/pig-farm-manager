@@ -2784,13 +2784,17 @@ Pages.settings = {
 
         const file = fileInput.files[0];
         const reader = new FileReader();
-        reader.onload = (e) => {
-            const success = DB.importAll(e.target.result);
-            if (success) {
-                App.showToast('Database restored successfully! Reloading session.', 'success');
-                setTimeout(() => window.location.reload(), 1500);
-            } else {
-                App.showToast('Failed to parse file. Invalid backup format.', 'error');
+        reader.onload = async (e) => {
+            try {
+                const success = await DB.importAll(e.target.result);
+                if (success) {
+                    App.showToast('Database restored & synced to Cloud! Reloading...', 'success');
+                    setTimeout(() => window.location.reload(), 1500);
+                } else {
+                    App.showToast('Failed to parse file. Invalid backup format.', 'error');
+                }
+            } catch(err) {
+                App.showToast('Restore error: ' + err.message, 'error');
             }
         };
         reader.readAsText(file);

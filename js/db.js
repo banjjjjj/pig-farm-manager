@@ -48,14 +48,14 @@ window.DB = {
     ],
 
     init() {
-        // Seed default users if empty
+        // 1. Seed default users if empty
         if (!localStorage.getItem(this.KEYS.USERS)) {
             const defaultUsers = [
                 {
                     id: 'usr_1',
                     name: 'Banjo',
                     username: 'banjo',
-                    password: 'password123', // Default password requested
+                    password: 'password123',
                     role: 'Administrator',
                     created_at: new Date().toISOString(),
                     created_by: 'System'
@@ -64,7 +64,7 @@ window.DB = {
                     id: 'usr_2',
                     name: 'Albe',
                     username: 'albe',
-                    password: 'password123', // Default password requested
+                    password: 'password123',
                     role: 'Manager',
                     created_at: new Date().toISOString(),
                     created_by: 'System'
@@ -73,7 +73,7 @@ window.DB = {
             this._saveRaw(this.KEYS.USERS, defaultUsers);
         }
 
-        // Seed default settings if empty
+        // 2. Seed default settings if empty
         if (!localStorage.getItem(this.KEYS.SETTINGS)) {
             const defaultSettings = {
                 farm_name: 'PigFarm Pro',
@@ -83,195 +83,7 @@ window.DB = {
             this._saveRaw(this.KEYS.SETTINGS, defaultSettings);
         }
 
-        // Seed default housing if empty
-        if (!localStorage.getItem(this.KEYS.HOUSING)) {
-            const defaultHousing = [
-                { id: 'house_1', pen_number: 'Pen A1', type: 'Farrowing', capacity: 5, location: 'Building A', status: 'Active', created_at: new Date().toISOString(), created_by: 'System' },
-                { id: 'house_2', pen_number: 'Pen B1', type: 'Growing', capacity: 10, location: 'Building B', status: 'Active', created_at: new Date().toISOString(), created_by: 'System' },
-                { id: 'house_3', pen_number: 'Pen C1', type: 'Finishing', capacity: 8, location: 'Building C', status: 'Active', created_at: new Date().toISOString(), created_by: 'System' }
-            ];
-            this._saveRaw(this.KEYS.HOUSING, defaultHousing);
-        }
-
-        // Seed default batches if empty
-        if (!localStorage.getItem(this.KEYS.BATCHES)) {
-            const defaultBatches = [
-                {
-                    id: 'batch_1',
-                    name: 'Duroc Growth Batch',
-                    description: 'Batch of Duroc weaners started in March',
-                    owner: 'Banjo',
-                    status: 'Active',
-                    start_date: '2026-03-01',
-                    sale_date: '',
-                    purchase_price_total: 11000,
-                    sale_price_total: 0,
-                    created_at: new Date().toISOString(),
-                    created_by: 'System'
-                },
-                {
-                    id: 'batch_2',
-                    name: 'Q1 Market Sale',
-                    description: 'Pigs sold to meat processor in May',
-                    owner: 'Shared',
-                    status: 'Sold',
-                    start_date: '2026-01-15',
-                    sale_date: '2026-05-20',
-                    purchase_price_total: 5000,
-                    sale_price_total: 12000,
-                    created_at: new Date().toISOString(),
-                    created_by: 'System'
-                }
-            ];
-            this._saveRaw(this.KEYS.BATCHES, defaultBatches);
-        }
-
-        // Seed some mock pigs & records if database is empty of pigs to make it look active on first open
-        if (!localStorage.getItem(this.KEYS.PIGS)) {
-            const now = new Date();
-            const birth1 = new Date(); birth1.setMonth(now.getMonth() - 4);
-            const birth2 = new Date(); birth2.setMonth(now.getMonth() - 2);
-            const birth3 = new Date(); birth3.setMonth(now.getMonth() - 6);
-
-            const defaultPigs = [
-                { id: 'pig_1', name: 'Duroc Star', tag: 'D-101', breed: 'Duroc', birth_date: birth1.toISOString().split('T')[0], gender: 'Boar', status: 'Active', owner: 'Banjo', housing_id: 'house_2', purchase_price: 5000, purchase_date: birth1.toISOString().split('T')[0], batch_id: 'batch_1', notes: 'High growth rate potential', created_at: new Date().toISOString(), created_by: 'System' },
-                { id: 'pig_2', name: 'Landrace Queen', tag: 'L-202', breed: 'Landrace', birth_date: birth2.toISOString().split('T')[0], gender: 'Sow', status: 'Active', owner: 'Albe', housing_id: 'house_1', purchase_price: 6000, purchase_date: birth2.toISOString().split('T')[0], batch_id: 'batch_1', notes: 'Docile temperament', created_at: new Date().toISOString(), created_by: 'System' },
-                { id: 'pig_3', name: 'Shared Breeder', tag: 'S-303', breed: 'Large White', birth_date: birth3.toISOString().split('T')[0], gender: 'Sow', status: 'Breeding', owner: 'Shared', housing_id: 'house_1', purchase_price: 7500, purchase_date: birth3.toISOString().split('T')[0], batch_id: '', notes: 'First litter expected soon', created_at: new Date().toISOString(), created_by: 'System' },
-                { id: 'pig_4', name: 'Market Bacon', tag: 'M-404', breed: 'Berkshire', birth_date: birth3.toISOString().split('T')[0], gender: 'Barrow', status: 'Sold', owner: 'Shared', housing_id: '', purchase_price: 5000, purchase_date: birth3.toISOString().split('T')[0], batch_id: 'batch_2', notes: 'Sold as part of Q1 Market Sale batch on 2026-05-20', created_at: new Date().toISOString(), created_by: 'System' }
-            ];
-            this._saveRaw(this.KEYS.PIGS, defaultPigs);
-
-            // Seed feed logs
-            const defaultFeed = [
-                { id: 'feed_1', pig_id: 'pig_1', feed_type: 'Grower', quantity_kg: 25, cost: 1250, date: now.toISOString().split('T')[0], notes: 'Regular feed schedule', created_at: new Date().toISOString(), created_by: 'System' },
-                { id: 'feed_2', pig_id: 'pig_2', feed_type: 'Starter', quantity_kg: 10, cost: 600, date: now.toISOString().split('T')[0], notes: 'Transition feed', created_at: new Date().toISOString(), created_by: 'System' }
-            ];
-            this._saveRaw(this.KEYS.FEED, defaultFeed);
-
-            // Seed med logs
-            const defaultMeds = [
-                { id: 'med_1', pig_id: 'pig_1', medicine_name: 'Iron Injection', dosage: '2ml', cost: 150, date: now.toISOString().split('T')[0], purpose: 'Supplement', notes: 'Routine supplement at early stage', created_at: new Date().toISOString(), created_by: 'System' },
-                { id: 'med_2', pig_id: 'pig_3', medicine_name: 'Parvovirus Vaccine', dosage: '2ml', cost: 350, date: now.toISOString().split('T')[0], purpose: 'Vaccination', notes: 'Pre-breeding vaccination', created_at: new Date().toISOString(), created_by: 'System' }
-            ];
-            this._saveRaw(this.KEYS.MEDICINE, defaultMeds);
-
-            // Seed weight logs
-            const defaultWeights = [
-                { id: 'weight_1', pig_id: 'pig_1', weight_kg: 45, date: now.toISOString().split('T')[0], notes: 'Healthy growth', created_at: new Date().toISOString(), created_by: 'System' },
-                { id: 'weight_2', pig_id: 'pig_2', weight_kg: 22, date: now.toISOString().split('T')[0], notes: 'Slightly underweight, monitoring', created_at: new Date().toISOString(), created_by: 'System' }
-            ];
-            this._saveRaw(this.KEYS.WEIGHT, defaultWeights);
-
-            // Seed expenses
-            const defaultExpenses = [
-                { id: 'exp_1', category: 'Housing', description: 'Repair pen A1 door', amount: 800, owner: 'Banjo', date: now.toISOString().split('T')[0], pig_id: '', notes: 'Door hinge replacement', created_at: new Date().toISOString(), created_by: 'System' },
-                { id: 'exp_2', category: 'Equipment', description: 'Nipple drinker replacement', amount: 450, owner: 'Shared', date: now.toISOString().split('T')[0], pig_id: '', notes: 'Pen B1 drinkers', created_at: new Date().toISOString(), created_by: 'System' }
-            ];
-            this._saveRaw(this.KEYS.EXPENSES, defaultExpenses);
-
-            // Seed income
-            const defaultIncome = [
-                { id: 'inc_1', source: 'Manure', description: 'Sold 10 bags of organic manure', amount: 500, owner: 'Albe', date: now.toISOString().split('T')[0], pig_id: '', notes: 'Local farm purchase', created_at: new Date().toISOString(), created_by: 'System' }
-            ];
-            this._saveRaw(this.KEYS.INCOME, defaultIncome);
-
-            // Seed Poultry Flocks
-            const defaultFlocks = [
-                {
-                    id: 'flock_1',
-                    name: 'Lohmann layers 2026-A',
-                    breed: 'Lohmann Brown',
-                    type: 'Layer',
-                    start_date: '2026-04-01',
-                    initial_count: 300,
-                    current_count: 298,
-                    status: 'Active',
-                    coop_id: 'Coop A',
-                    owner: 'Banjo',
-                    purchase_price: 15000,
-                    notes: 'High yield layer flock',
-                    created_at: new Date().toISOString(),
-                    created_by: 'System'
-                },
-                {
-                    id: 'flock_2',
-                    name: 'Broilers Q2 batch',
-                    breed: 'Cobb 500',
-                    type: 'Broiler',
-                    start_date: '2026-05-10',
-                    initial_count: 500,
-                    current_count: 0,
-                    status: 'Sold',
-                    coop_id: 'Coop B',
-                    owner: 'Shared',
-                    purchase_price: 10000,
-                    sale_price_total: 65000,
-                    sale_date: '2026-07-15',
-                    notes: 'Successfully harvested and sold to wholesale',
-                    created_at: new Date().toISOString(),
-                    created_by: 'System'
-                }
-            ];
-            this._saveRaw(this.KEYS.FLOCKS, defaultFlocks);
-
-            // Seed Poultry Daily Logs
-            const defaultDaily = [
-                {
-                    id: 'pld_1',
-                    flock_id: 'flock_1',
-                    date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
-                    collected_qty: 260,
-                    cracked_qty: 4,
-                    mortality_qty: 1,
-                    notes: 'Standard yield. 1 bird deceased.',
-                    created_at: new Date().toISOString(),
-                    created_by: 'System'
-                },
-                {
-                    id: 'pld_2',
-                    flock_id: 'flock_1',
-                    date: new Date().toISOString().split('T')[0],
-                    collected_qty: 255,
-                    cracked_qty: 3,
-                    mortality_qty: 1,
-                    notes: 'Stable collection. 1 bird culled.',
-                    created_at: new Date().toISOString(),
-                    created_by: 'System'
-                }
-            ];
-            this._saveRaw(this.KEYS.POULTRY_DAILY, defaultDaily);
-
-            // Seed Poultry Expense Logs
-            const defaultPoultryExp = [
-                {
-                    id: 'ple_1',
-                    flock_id: 'flock_1',
-                    type: 'Feed',
-                    item_name: 'Layer Mash',
-                    quantity_kg: 50,
-                    cost: 1800,
-                    date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
-                    notes: '1 bag feeding',
-                    created_at: new Date().toISOString(),
-                    created_by: 'System'
-                },
-                {
-                    id: 'ple_2',
-                    flock_id: 'flock_1',
-                    type: 'Medicine',
-                    item_name: 'Newcastle Disease Vaccine',
-                    dosage: 'flock-wide water treatment',
-                    cost: 1200,
-                    date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
-                    notes: 'Routine vaccination',
-                    created_at: new Date().toISOString(),
-                    created_by: 'System'
-                }
-            ];
-            this._saveRaw(this.KEYS.POULTRY_EXPENSES, defaultPoultryExp);
-        }
-
-        // 6. Initialize Real-Time Firebase Firestore Cloud Sync
+        // 3. Initialize Real-Time Firebase Firestore Cloud Sync
         this.initFirestore();
     },
 
@@ -360,8 +172,11 @@ window.DB = {
                     this._notifyAppChange(col);
 
                 } else {
-                    // Cloud collection is empty — automatically upload local data
-                    this._autoSeedCloudCollection(col);
+                    // If cloud collection is empty, ensure local cache is empty
+                    const key = this.KEYS[col.toUpperCase()];
+                    if (key && !localStorage.getItem(key)) {
+                        this._saveRaw(key, []);
+                    }
                 }
             }, err => {
                 console.warn(`Firestore sync error on ${col}:`, err);
@@ -369,26 +184,6 @@ window.DB = {
             });
 
             this._syncListeners.push(unsub);
-        });
-    },
-
-    // Automatically uploads local collection data to Firestore if cloud collection is empty
-    _autoSeedCloudCollection(collection) {
-        if (!this.firestore) return;
-        const localItems = this.getAll(collection);
-        if (!localItems || localItems.length === 0) return;
-
-        console.log(`Cloud collection "${collection}" is empty. Auto-uploading ${localItems.length} local records...`);
-        const batch = this.firestore.batch();
-        localItems.forEach(item => {
-            const docRef = this.firestore.collection(collection).doc(item.id);
-            const { id: _, ...itemData } = item;
-            batch.set(docRef, itemData, { merge: true });
-        });
-        batch.commit().then(() => {
-            console.log(`Auto-upload complete for ${collection}`);
-        }).catch(err => {
-            console.warn(`Auto-upload notice for ${collection}:`, err.message);
         });
     },
 
@@ -461,19 +256,32 @@ window.DB = {
         const settings = this.getSettings();
         await this.firestore.collection('settings').doc('general').set(settings, { merge: true });
 
-        // 2. Upload each collection
+        // 2. Upload each collection and prune stale cloud records
         for (const col of this.SYNC_COLLECTIONS) {
             const items = this.getAll(col);
+            const batch = this.firestore.batch();
+            
+            // Get existing cloud docs to prune any records deleted locally
+            const existingSnap = await this.firestore.collection(col).get();
+            const currentItemIds = new Set((items || []).map(i => i.id));
+            
+            existingSnap.forEach(doc => {
+                if (!currentItemIds.has(doc.id)) {
+                    batch.delete(doc.ref);
+                }
+            });
+
+            // Write current items
             if (items && items.length > 0) {
-                const batch = this.firestore.batch();
                 items.forEach(item => {
                     const docRef = this.firestore.collection(col).doc(item.id);
                     const { id: _, ...itemData } = item;
                     batch.set(docRef, itemData, { merge: true });
                 });
-                await batch.commit();
                 totalCount += items.length;
             }
+
+            await batch.commit();
         }
 
         this.updateCloudStatus('connected', 'Cloud Sync: Active');
@@ -491,7 +299,7 @@ window.DB = {
         localStorage.setItem(key, JSON.stringify(data));
     },
 
-    // --- General CRUD API ---
+    // --- General CRUD API (Optimistic local cache + Cloud Firestore write) ---
     getAll(collection) {
         const key = this.KEYS[collection.toUpperCase()];
         if (!key) return [];
@@ -621,194 +429,80 @@ window.DB = {
 
     // --- Settings ---
     getSettings() {
-        const settings = localStorage.getItem(this.KEYS.SETTINGS);
-        return settings ? JSON.parse(settings) : { farm_name: 'PigFarm Pro', currency: '₱' };
+        const val = localStorage.getItem(this.KEYS.SETTINGS);
+        return val ? JSON.parse(val) : { farm_name: 'PigFarm Pro', currency: '₱', date_format: 'YYYY-MM-DD' };
     },
 
     saveSettings(settings) {
-        localStorage.setItem(this.KEYS.SETTINGS, JSON.stringify(settings));
+        this._saveRaw(this.KEYS.SETTINGS, settings);
+        if (this.firestore) {
+            this.firestore.collection('settings').doc('general').set(settings, { merge: true })
+                .catch(err => console.warn("Cloud settings save queued:", err.message));
+        }
     },
 
-    // --- Backup & Restore ---
+    // --- Backup & Restore (Flat File JSON) ---
     exportAll() {
-        const backup = {
-            metadata: {
-                timestamp: new Date().toISOString(),
-                version: '1.0.0'
-            },
+        const exportData = {
+            version: '2.0.0',
+            export_date: new Date().toISOString(),
             data: {}
         };
-        for (const [key, value] of Object.entries(this.KEYS)) {
-            const rawVal = localStorage.getItem(value);
-            if (rawVal) {
-                backup.data[value] = JSON.parse(rawVal);
+
+        for (const [name, key] of Object.entries(this.KEYS)) {
+            if (key !== this.KEYS.CURRENT_USER) {
+                exportData.data[key] = this._getRaw(key);
             }
         }
-        return JSON.stringify(backup);
+
+        return JSON.stringify(exportData, null, 2);
     },
 
-    importAll(jsonString) {
+    async importAll(jsonString) {
         try {
-            const backup = JSON.parse(jsonString);
-            if (!backup.data || !backup.metadata) return false;
-            
+            const parsed = JSON.parse(jsonString);
+            const dataObj = parsed.data || parsed;
+
             // Clear current pfm keys
             for (const key of Object.values(this.KEYS)) {
-                localStorage.removeItem(key);
+                if (key !== this.KEYS.CURRENT_USER) {
+                    localStorage.removeItem(key);
+                }
             }
 
             // Restore from backup
-            for (const [key, value] of Object.entries(backup.data)) {
-                localStorage.setItem(key, JSON.stringify(value));
+            for (const [key, value] of Object.entries(dataObj)) {
+                if (key.startsWith('pfm_') && key !== this.KEYS.CURRENT_USER) {
+                    this._saveRaw(key, value);
+                }
             }
-            // Re-init defaults just in case
-            this.init();
+
+            // Sync restored data to Firestore Cloud immediately
+            if (this.firestore) {
+                await this.uploadAllToCloud();
+            }
+
             return true;
         } catch (e) {
-            console.error('Failed to import backup', e);
+            console.error('Import error:', e);
             return false;
         }
     },
 
     downloadBackup() {
-        const dataStr = this.exportAll();
-        const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-        const exportFileDefaultName = `pigfarm_backup_${new Date().toISOString().split('T')[0]}.json`;
+        const jsonStr = this.exportAll();
+        const dateStr = new Date().toISOString().split('T')[0];
+        const filename = `pigfarm_backup_${dateStr}.json`;
         
-        const linkElement = document.createElement('a');
-        linkElement.setAttribute('href', dataUri);
-        linkElement.setAttribute('download', exportFileDefaultName);
-        linkElement.click();
-    },
-
-    // --- Offline P2P QR Delta Sync API ---
-    getExportDelta(sinceTimestamp = null) {
-        const syncCollections = [
-            'pigs', 'batches', 'flocks', 'poultry_daily', 'poultry_expenses',
-            'feed_logs', 'medicine_logs', 'weight_logs', 'expenses', 'income',
-            'housing', 'breeding', 'users'
-        ];
-
-        const payload = {
-            v: 1,
-            export_date: new Date().toISOString(),
-            since: sinceTimestamp,
-            data: {},
-            deleted: []
-        };
-
-        syncCollections.forEach(col => {
-            const items = this.getAll(col);
-            if (sinceTimestamp) {
-                // Filter items created or updated after sinceTimestamp
-                payload.data[col] = items.filter(item => {
-                    const t = item.updated_at || item.created_at;
-                    return t && t > sinceTimestamp;
-                });
-            } else {
-                payload.data[col] = items;
-            }
-        });
-
-        // Add deleted tombstones
-        const tombstones = this._getRaw(this.KEYS.DELETED);
-        if (sinceTimestamp) {
-            payload.deleted = tombstones.filter(d => d.deleted_at > sinceTimestamp);
-        } else {
-            payload.deleted = tombstones;
-        }
-
-        return payload;
-    },
-
-    mergeDelta(incomingPayload) {
-        if (!incomingPayload || !incomingPayload.data) {
-            throw new Error("Invalid sync payload: missing data field.");
-        }
-
-        const stats = {
-            added: 0,
-            updated: 0,
-            deleted: 0,
-            unchanged: 0
-        };
-
-        const incomingData = incomingPayload.data;
-        const incomingDeleted = incomingPayload.deleted || [];
-
-        // 1. Process and merge incoming deleted tombstones
-        const localDeleted = this._getRaw(this.KEYS.DELETED);
-        incomingDeleted.forEach(delItem => {
-            if (!localDeleted.some(d => d.id === delItem.id)) {
-                localDeleted.push(delItem);
-            }
-        });
-        if (localDeleted.length > 200) {
-            localDeleted.splice(0, localDeleted.length - 200);
-        }
-        this._saveRaw(this.KEYS.DELETED, localDeleted);
-
-        const deletionMap = new Map();
-        localDeleted.forEach(d => deletionMap.set(d.id, d.deleted_at));
-
-        // 2. Process collections using Last-Write-Wins (LWW)
-        Object.keys(incomingData).forEach(col => {
-            const colKey = this.KEYS[col.toUpperCase()];
-            if (!colKey) return;
-
-            const localItems = this._getRaw(colKey);
-            const incomingItems = incomingData[col] || [];
-
-            incomingItems.forEach(incomingItem => {
-                if (!incomingItem || !incomingItem.id) return;
-
-                // Check if this item has been deleted
-                const deletedAt = deletionMap.get(incomingItem.id);
-                const incomingTimestamp = incomingItem.updated_at || incomingItem.created_at || '';
-                
-                if (deletedAt && deletedAt >= incomingTimestamp) {
-                    // Item was deleted locally or deleted earlier than incoming change
-                    return;
-                }
-
-                const localIndex = localItems.findIndex(item => item.id === incomingItem.id);
-
-                if (localIndex === -1) {
-                    // Item does not exist locally -> add it
-                    localItems.push(incomingItem);
-                    stats.added++;
-                } else {
-                    // Item exists -> compare timestamps (Last-Write-Wins)
-                    const localTimestamp = localItems[localIndex].updated_at || localItems[localIndex].created_at || '';
-                    
-                    if (incomingTimestamp > localTimestamp) {
-                        localItems[localIndex] = incomingItem;
-                        stats.updated++;
-                    } else {
-                        stats.unchanged++;
-                    }
-                }
-            });
-
-            // Clean any items in localItems that match deletions
-            const filteredLocal = localItems.filter(item => {
-                const delTime = deletionMap.get(item.id);
-                const itemTime = item.updated_at || item.created_at || '';
-                if (delTime && delTime >= itemTime) {
-                    stats.deleted++;
-                    return false;
-                }
-                return true;
-            });
-
-            this._saveRaw(colKey, filteredLocal);
-        });
-
-        // 3. Update last sync timestamp
-        const syncTimestamp = incomingPayload.export_date || new Date().toISOString();
-        localStorage.setItem(this.KEYS.LAST_SYNC, syncTimestamp);
-
-        return stats;
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
     },
 
     // --- Dashboard Aggregations ---
