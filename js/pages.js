@@ -2711,7 +2711,8 @@ Pages.settings = {
                     <h3>Local Data Backup</h3>
                     <p class="text-muted" style="font-size:0.9rem; margin-bottom:16px;">Download client database records as flat files or reload historical snapshots.</p>
                     
-                    <button class="btn btn-secondary mb-4" id="download-backup-btn" style="width:100%;">📥 Download Database Backup (.json)</button>
+                    <button class="btn btn-primary mb-2" id="download-backup-btn" style="width:100%;">📥 Download Database Backup (.json)</button>
+                    <button class="btn btn-secondary mb-4" id="copy-backup-btn" style="width:100%;">📋 Copy Backup JSON to Clipboard</button>
                     
                     <div style="border-top:1.5px dashed var(--glass-border); padding-top:16px;">
                         <label class="form-label">Restore database from backup (.json)</label>
@@ -2733,6 +2734,8 @@ Pages.settings = {
     init() {
         document.getElementById('save-settings-btn').onclick = () => this.saveSettings();
         document.getElementById('download-backup-btn').onclick = () => DB.downloadBackup();
+        const copyBtn = document.getElementById('copy-backup-btn');
+        if (copyBtn) copyBtn.onclick = () => DB.copyBackupToClipboard();
         document.getElementById('restore-btn').onclick = () => this.restoreBackup();
         document.getElementById('reset-database-btn').onclick = () => this.resetDatabase();
         

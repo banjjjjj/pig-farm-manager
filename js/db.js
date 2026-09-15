@@ -553,19 +553,20 @@ window.DB = {
 
             // 1. Mobile Phone Support (iOS Safari PWA & Android):
             // Use native file share sheet if on a mobile device
-            if (isMobile && navigator.share && navigator.canShare && typeof File !== 'undefined') {
+            if (isMobile && navigator.share && typeof File !== 'undefined') {
                 try {
                     const file = new File([blob], filename, { type: 'application/json' });
-                    if (navigator.canShare({ files: [file] })) {
+                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
                         navigator.share({
                             files: [file],
                             title: filename,
                             text: 'PigFarm Pro Database Backup'
                         }).catch(e => {
                             if (e.name !== 'AbortError') {
-                                this._fallbackDownload(blob, filename, jsonStr);
+                                this._triggerFileDownload(blob, filename, jsonStr);
                             }
                         });
+                        this._showBackupModal(jsonStr, filename);
                         return;
                     }
                 } catch (e) {
@@ -573,8 +574,9 @@ window.DB = {
                 }
             }
 
-            // 2. Desktop (or mobile fallback): Direct file download
-            this._fallbackDownload(blob, filename, jsonStr);
+            // 2. Desktop (or mobile fallback): Direct file download & show modal
+            this._triggerFileDownload(blob, filename, jsonStr);
+            this._showBackupModal(jsonStr, filename);
 
         } catch (err) {
             console.error("Backup download error:", err);
@@ -584,11 +586,36 @@ window.DB = {
         }
     },
 
-    _fallbackDownload(blob, filename, jsonStr) {
+    copyBackupToClipboard() {
+        try {
+            const jsonStr = this.exportAll();
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(jsonStr).then(() => {
+                    if (window.App && window.App.showToast) {
+                        window.App.showToast('✅ Backup JSON copied to clipboard!', 'success');
+                    }
+                    this._showBackupModal(jsonStr);
+                }).catch(() => {
+                    this._showBackupModal(jsonStr);
+                });
+            } else {
+                this._showBackupModal(jsonStr);
+            }
+        } catch (err) {
+            console.error("Copy backup error:", err);
+            if (window.App && window.App.showToast) {
+                window.App.showToast('Error copying backup: ' + err.message, 'error');
+            }
+        }
+    },
+
+    _triggerFileDownload(blob, filename, jsonStr) {
         try {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.style.display = 'none';
+            a.style.position = 'fixed';
+            a.style.left = '-9999px';
+            a.style.top = '-9999px';
             a.href = url;
             a.download = filename;
             document.body.appendChild(a);
@@ -601,15 +628,87 @@ window.DB = {
                 window.App.showToast('Backup file downloaded to your device.', 'success');
             }
         } catch (e) {
-            console.warn("Download link failed, trying clipboard fallback:", e);
-            if (navigator.clipboard) {
-                navigator.clipboard.writeText(jsonStr).then(() => {
-                    if (window.App && window.App.showToast) {
-                        window.App.showToast('Download blocked: Backup JSON copied to clipboard!', 'info');
-                    }
-                }).catch(() => {});
+            console.warn("Download anchor failed, trying data URI fallback:", e);
+            try {
+                const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(jsonStr);
+                const a = document.createElement('a');
+                a.style.position = 'fixed';
+                a.style.left = '-9999px';
+                a.style.top = '-9999px';
+                a.href = dataUri;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => document.body.removeChild(a), 1500);
+            } catch (err2) {
+                console.warn("Data URI fallback failed:", err2);
             }
         }
+    },
+
+    _showBackupModal(jsonStr, filename) {
+        if (!window.App || !window.App.showModal) return;
+        const dateStr = new Date().toISOString().split('T')[0];
+        const fname = filename || `pigfarm_backup_${dateStr}.json`;
+        const sizeKb = (new Blob([jsonStr]).size / 1024).toFixed(1);
+
+        const bodyHTML = `
+            <div style="text-align:center; margin-bottom:16px;">
+                <div style="font-size: 2.2rem; margin-bottom: 6px;">📦</div>
+                <h4 style="margin:0 0 4px 0; color:var(--text-primary);">Backup Ready (${sizeKb} KB)</h4>
+                <p class="text-muted" style="font-size:0.85rem; margin:0;">${fname}</p>
+            </div>
+
+            <div class="flex" style="gap:10px; margin-bottom:16px;">
+                <button class="btn btn-primary" id="modal-download-file-btn" style="flex:1;">📥 Download File</button>
+                <button class="btn btn-secondary" id="modal-copy-json-btn" style="flex:1;">📋 Copy All JSON</button>
+            </div>
+
+            <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="display:flex; justify-content:space-between;">
+                    <span>Raw JSON Backup</span>
+                    <span class="text-muted" style="font-size:0.75rem;">(Tap to select all)</span>
+                </label>
+                <textarea id="modal-backup-raw-text" class="form-control" rows="6" readonly style="font-family:monospace; font-size:0.75rem; word-break:break-all; background:rgba(0,0,0,0.3); resize:vertical;">${jsonStr}</textarea>
+            </div>
+        `;
+
+        const footerHTML = `<button class="btn btn-secondary" onclick="App.closeModal()">Close</button>`;
+
+        window.App.showModal('Database Backup', bodyHTML, footerHTML);
+
+        setTimeout(() => {
+            const dlBtn = document.getElementById('modal-download-file-btn');
+            const copyBtn = document.getElementById('modal-copy-json-btn');
+            const txt = document.getElementById('modal-backup-raw-text');
+
+            if (dlBtn) {
+                dlBtn.onclick = () => {
+                    const blob = new Blob([jsonStr], { type: 'application/json' });
+                    DB._triggerFileDownload(blob, fname, jsonStr);
+                };
+            }
+
+            if (copyBtn) {
+                copyBtn.onclick = () => {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(jsonStr).then(() => {
+                            window.App.showToast('✅ Copied backup JSON to clipboard!', 'success');
+                        });
+                    } else if (txt) {
+                        txt.select();
+                        document.execCommand('copy');
+                        window.App.showToast('✅ Copied backup JSON to clipboard!', 'success');
+                    }
+                };
+            }
+
+            if (txt) {
+                txt.onclick = () => {
+                    txt.select();
+                };
+            }
+        }, 50);
     },
 
     // --- Dashboard Aggregations ---
