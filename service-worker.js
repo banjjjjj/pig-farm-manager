@@ -1,11 +1,11 @@
-const CACHE_NAME = 'pigfarm-pro-cache-v7';
+const CACHE_NAME = 'pigfarm-pro-cache-v8';
 const ASSETS = [
   './',
   './index.html',
   './css/style.css',
-  './js/db.js?v=2.6',
-  './js/app.js?v=2.6',
-  './js/pages.js?v=2.6',
+  './js/db.js?v=2.7',
+  './js/app.js?v=2.7',
+  './js/pages.js?v=2.7',
   './manifest.json',
   './assets/icon-192.png',
   './assets/icon-512.png'

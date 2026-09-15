@@ -291,8 +291,14 @@ window.DB = {
 
     // --- Helper persistence functions ---
     _getRaw(key) {
-        const val = localStorage.getItem(key);
-        return val ? JSON.parse(val) : [];
+        try {
+            const val = localStorage.getItem(key);
+            if (val === null || val === undefined) return [];
+            return JSON.parse(val);
+        } catch (e) {
+            const raw = localStorage.getItem(key);
+            return raw || [];
+        }
     },
 
     _saveRaw(key, data) {
@@ -449,8 +455,9 @@ window.DB = {
             data: {}
         };
 
-        for (const [name, key] of Object.entries(this.KEYS)) {
-            if (key !== this.KEYS.CURRENT_USER) {
+        const uniqueKeys = new Set(Object.values(this.KEYS));
+        for (const key of uniqueKeys) {
+            if (key !== this.KEYS.CURRENT_USER && key !== this.KEYS.LAST_SYNC) {
                 exportData.data[key] = this._getRaw(key);
             }
         }
@@ -535,35 +542,49 @@ window.DB = {
         return true;
     },
 
-    async downloadBackup() {
-        const jsonStr = this.exportAll();
-        const dateStr = new Date().toISOString().split('T')[0];
-        const filename = `pigfarm_backup_${dateStr}.json`;
-        
-        const blob = new Blob([jsonStr], { type: 'application/json' });
+    downloadBackup() {
+        try {
+            const jsonStr = this.exportAll();
+            const dateStr = new Date().toISOString().split('T')[0];
+            const filename = `pigfarm_backup_${dateStr}.json`;
+            const blob = new Blob([jsonStr], { type: 'application/json' });
 
-        // 1. Mobile Phone Support (iOS Safari PWA & Android): Uses native file share / Save to Files
-        if (navigator.canShare && typeof File !== 'undefined') {
-            try {
-                const file = new File([blob], filename, { type: 'application/json' });
-                if (navigator.canShare({ files: [file] })) {
-                    await navigator.share({
-                        files: [file],
-                        title: filename,
-                        text: 'PigFarm Pro Database Backup'
-                    });
-                    if (window.App && window.App.showToast) {
-                        window.App.showToast('Backup shared / saved successfully!', 'success');
+            const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+
+            // 1. Mobile Phone Support (iOS Safari PWA & Android):
+            // Use native file share sheet if on a mobile device
+            if (isMobile && navigator.share && navigator.canShare && typeof File !== 'undefined') {
+                try {
+                    const file = new File([blob], filename, { type: 'application/json' });
+                    if (navigator.canShare({ files: [file] })) {
+                        navigator.share({
+                            files: [file],
+                            title: filename,
+                            text: 'PigFarm Pro Database Backup'
+                        }).catch(e => {
+                            if (e.name !== 'AbortError') {
+                                this._fallbackDownload(blob, filename, jsonStr);
+                            }
+                        });
+                        return;
                     }
-                    return;
+                } catch (e) {
+                    console.warn("Mobile share error, fallback to direct download:", e);
                 }
-            } catch (err) {
-                if (err.name === 'AbortError') return; // User closed the share menu
-                console.warn('Native share failed, falling back to download link:', err);
+            }
+
+            // 2. Desktop (or mobile fallback): Direct file download
+            this._fallbackDownload(blob, filename, jsonStr);
+
+        } catch (err) {
+            console.error("Backup download error:", err);
+            if (window.App && window.App.showToast) {
+                window.App.showToast('Error downloading backup: ' + err.message, 'error');
             }
         }
+    },
 
-        // 2. Desktop Standard Download (Chrome, Firefox, Edge, Safari Desktop)
+    _fallbackDownload(blob, filename, jsonStr) {
         try {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -579,13 +600,14 @@ window.DB = {
             if (window.App && window.App.showToast) {
                 window.App.showToast('Backup file downloaded to your device.', 'success');
             }
-        } catch (err) {
-            // 3. Fallback: Copy raw JSON to clipboard
+        } catch (e) {
+            console.warn("Download link failed, trying clipboard fallback:", e);
             if (navigator.clipboard) {
-                await navigator.clipboard.writeText(jsonStr);
-                if (window.App && window.App.showToast) {
-                    window.App.showToast('Backup copied to clipboard!', 'info');
-                }
+                navigator.clipboard.writeText(jsonStr).then(() => {
+                    if (window.App && window.App.showToast) {
+                        window.App.showToast('Download blocked: Backup JSON copied to clipboard!', 'info');
+                    }
+                }).catch(() => {});
             }
         }
     },
